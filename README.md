@@ -82,6 +82,22 @@ The runtime configuration can be changed through the web settings page after the
 
 The dashboard and API are protected with basic authentication in the web helper.
 
+## OTA Firmware
+
+A compiled ESP8266 OTA firmware image is included:
+
+```text
+firmware/ENTSOE_Price_Monitor_Led_esp8266.bin
+```
+
+Use this file on the device OTA update page:
+
+```text
+http://<device-ip>/update
+```
+
+The binary was built for the `d1_mini` PlatformIO environment shown above.
+
 ## Using These Sources
 
 Create a normal PlatformIO ESP8266 project and place these files in its `src` directory. Add the dependencies listed above to `platformio.ini`, then build and upload:
