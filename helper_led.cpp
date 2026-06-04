@@ -1,4 +1,5 @@
 #include "helper_led.h"
+#include "helper_config.h"
 
 // Define matrix and related globals
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, D3,
@@ -20,7 +21,8 @@ bool apModeActive = false;
 void matrixInitialize() {
   Serial.println("Initialize LED Matrix");
   matrix.begin();
-  matrix.setBrightness(ledBrightness);
+  uint8_t brightness = config.ledBrightness > 0 ? config.ledBrightness : defaultLedBrightness;
+  matrix.setBrightness(brightness);
   matrix.fillScreen(0);
   matrix.show();
   blinkState = false;
@@ -172,7 +174,8 @@ void matrixPowerOff() {
 
 void matrixWakeUp() {
   matrix.begin();
-  matrix.setBrightness(ledBrightness);
+  uint8_t brightness = config.ledBrightness > 0 ? config.ledBrightness : defaultLedBrightness;
+  matrix.setBrightness(brightness);
   matrix.fillScreen(0);
   matrix.show();
   Serial.println("LED Matrix: re-initialized after wake");

@@ -129,6 +129,7 @@ void handleApiConfig() {
   json += ",\"hasWebPassword\":" + String(strlen(config.webPass) > 0 ? "true" : "false");
   json += ",\"biddingZone\":\"" + jsonEscapeForApi(String(config.biddingZone)) + "\"";
   json += ",\"timezone\":\"" + jsonEscapeForApi(String(config.timezone)) + "\"";
+  json += ",\"ledBrightness\":" + String(config.ledBrightness > 0 ? config.ledBrightness : defaultLedBrightness);
   json += ",\"configured\":" + String(config.configured ? "true" : "false");
   json += "}";
   server.send(200, "application/json", json);
@@ -148,6 +149,7 @@ void handleApiSaveConfig() {
   String webPass = server.arg("webPass");
   String biddingZone = server.arg("biddingZone");
   String timezone = server.arg("timezone");
+  String ledBrightness = server.arg("ledBrightness");
   
   if (ssid.length() == 0 || (apiKey.length() == 0 && strlen(config.apiKey) == 0) ||
       webUser.length() == 0 || (webPass.length() == 0 && strlen(config.webPass) == 0)) {
@@ -157,6 +159,9 @@ void handleApiSaveConfig() {
   
   if (biddingZone.length() == 0) biddingZone = "10YNL----------L";
   if (timezone.length() == 0) timezone = "CET-1CEST,M3.5.0,M10.5.0/3";
+  int brightnessValue = ledBrightness.length() > 0 ? ledBrightness.toInt() : config.ledBrightness;
+  if (brightnessValue < 1) brightnessValue = 1;
+  if (brightnessValue > 100) brightnessValue = 100;
   
   ssid.toCharArray(config.ssid, sizeof(config.ssid));
   if (password.length() > 0) {
@@ -171,6 +176,7 @@ void handleApiSaveConfig() {
   }
   biddingZone.toCharArray(config.biddingZone, sizeof(config.biddingZone));
   timezone.toCharArray(config.timezone, sizeof(config.timezone));
+  config.ledBrightness = (uint8_t)brightnessValue;
   config.configured = true;
   
   if (saveConfig()) {

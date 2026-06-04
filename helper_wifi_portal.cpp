@@ -115,6 +115,7 @@ void handleSave() {
   webPass.toCharArray(config.webPass, sizeof(config.webPass));
   biddingZone.toCharArray(config.biddingZone, sizeof(config.biddingZone));
   timezone.toCharArray(config.timezone, sizeof(config.timezone));
+  config.ledBrightness = defaultLedBrightness;
   config.configured = true;
 
   if (saveConfig()) {

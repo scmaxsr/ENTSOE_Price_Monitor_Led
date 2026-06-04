@@ -89,7 +89,7 @@ Compiled ESP8266 OTA firmware images are versioned with Git tags.
 Current firmware tag:
 
 ```text
-v1.2.0
+v1.3.0
 ```
 
 Download the tagged source or open the tag in GitHub to use the firmware image from that version. Upload the `.bin` file on the device OTA update page:

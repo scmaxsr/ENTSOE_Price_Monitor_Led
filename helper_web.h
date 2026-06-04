@@ -71,8 +71,12 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     .level-3 { background: #fdcb6e; }
     .level-4 { background: #e17055; }
     .level-5 { background: #d63031; }
+    .legend { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 12px; }
+    .legend-item { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 0.62em; color: #aaa; white-space: nowrap; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: 0 0 auto; }
     .footer { text-align: center; font-size: 0.65em; color: #555; margin-top: 20px; }
     .refresh-note { text-align: center; font-size: 0.7em; color: #666; margin-top: 8px; }
+    @media (max-width: 520px) { .legend { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
 <body>
@@ -90,6 +94,13 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     <div class="card">
       <h2>📊 Hourly Prices</h2>
       <div class="bar-chart" id="chart"></div>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot level-1"></span>Very cheap</div>
+        <div class="legend-item"><span class="legend-dot level-2"></span>Cheap</div>
+        <div class="legend-item"><span class="legend-dot level-3"></span>Normal</div>
+        <div class="legend-item"><span class="legend-dot level-4"></span>Expensive</div>
+        <div class="legend-item"><span class="legend-dot level-5"></span>Very expensive</div>
+      </div>
     </div>
     
     <div class="card">
@@ -110,7 +121,7 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     </div>
     
     <p class="refresh-note">Auto-refreshes every 60 seconds</p>
-    <div class="footer">ENTSO-E Price Monitor v1.2.0 · 8×8 LED Matrix</div>
+    <div class="footer">ENTSO-E Price Monitor " firmwareVersion " · 8×8 LED Matrix</div>
   </div>
   
   <script>
@@ -206,13 +217,21 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .settings { max-width: 500px; width: 100%; }
+    .settings { max-width: 980px; width: 100%; }
     h1 { text-align: center; color: #00d4aa; font-size: 1.3em; margin-bottom: 20px; }
-    .card { background: #16213e; border: 1px solid #00d4aa33; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+    .settings-grid .card { min-height: 230px; }
+    .card { background: #16213e; border: 1px solid #00d4aa33; border-radius: 12px; padding: 20px; margin-bottom: 0; min-width: 0; }
+    .section-title { display: flex; align-items: center; gap: 8px; color: #00d4aa; font-size: 0.95em; font-weight: 700; margin-bottom: 4px; }
+    .section-note { color: #888; font-size: 0.75em; line-height: 1.35; margin-bottom: 12px; }
     label { display: block; margin-top: 14px; margin-bottom: 5px; font-weight: 600; font-size: 0.85em; color: #ccc; }
     input, select { width: 100%; padding: 10px 12px; border: 1px solid #333; border-radius: 8px; background: #1a1a2e; color: #eee; font-size: 0.9em; }
     input:focus, select:focus { outline: none; border-color: #00d4aa; }
+    input[type=range] { padding: 0; accent-color: #00d4aa; }
     .info { font-size: 0.75em; color: #888; margin-top: 3px; }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .range-row { display: grid; grid-template-columns: 1fr 52px; align-items: center; gap: 12px; margin-top: 8px; }
+    .range-value { text-align: center; padding: 8px 6px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: #00d4aa; font-weight: 700; font-size: 0.85em; }
     .btn { width: 100%; padding: 12px; margin-top: 20px; background: #00d4aa; color: #1a1a2e; border: none; border-radius: 8px; font-size: 1em; font-weight: 700; cursor: pointer; }
     .btn:hover { background: #00b894; }
     .status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 0.85em; display: none; }
@@ -228,53 +247,86 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
     .ssid-row button:disabled { opacity: 0.5; cursor: not-allowed; }
     #manualSsidGroup { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #333; }
     #manualSsidGroup label { margin-top: 0; font-size: 0.8em; color: #00d4aa; }
+    @media (max-width: 760px) { .settings { max-width: 520px; } .settings-grid { grid-template-columns: 1fr; } .settings-grid .card { min-height: 0; } .field-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="settings">
     <h1>⚙️ Settings</h1>
-    <div class="card">
-      <form id="settingsForm">
-        <label>WiFi SSID</label>
-        <div class="ssid-row">
-          <select id="ssid" required>
-            <option value="">-- Scanning networks... --</option>
-          </select>
-          <button type="button" id="scanBtn" onclick="scanNetworks()">Scan</button>
+    <form id="settingsForm">
+      <div class="settings-grid">
+        <div class="card">
+          <div class="section-title">📶 Network</div>
+          <div class="section-note">WiFi connection used by the monitor after restart.</div>
+          <label>WiFi SSID</label>
+          <div class="ssid-row">
+            <select id="ssid" required>
+              <option value="">-- Scanning networks... --</option>
+            </select>
+            <button type="button" id="scanBtn" onclick="scanNetworks()">Scan</button>
+          </div>
+          <div class="info" id="scanInfo">Scanning for WiFi networks...</div>
+          <div id="manualSsidGroup" style="display:none;">
+            <label>Manual SSID</label>
+            <input type="text" id="manualSsid" placeholder="Type network name manually">
+          </div>
+          
+          <label>WiFi Password</label>
+          <input type="password" id="password" placeholder="Leave empty to keep current password">
+          <div class="info">Enter a new WiFi password only if you want to change it.</div>
         </div>
-        <div class="info" id="scanInfo">Scanning for WiFi networks...</div>
-        <div id="manualSsidGroup" style="display:none;">
-          <label>Manual SSID</label>
-          <input type="text" id="manualSsid" placeholder="Type network name manually">
+
+        <div class="card">
+          <div class="section-title">⚡ ENTSO-E Data</div>
+          <div class="section-note">Market area and API settings for day-ahead price data.</div>
+          <label>ENTSO-E API Key</label>
+          <input type="text" id="apiKey" placeholder="Leave empty to keep current key">
+          <div class="info" id="apiKeyInfo">Enter a new key only if you want to change it.</div>
+
+          <div class="field-grid">
+            <div>
+              <label>Bidding Zone (EIC Code)</label>
+              <input type="text" id="biddingZone" placeholder="e.g. 10YNL----------L">
+              <div class="info">NL: 10YNL----------L · BE: 10YBE----------2</div>
+            </div>
+            <div>
+              <label>Timezone (POSIX)</label>
+              <input type="text" id="timezone" placeholder="e.g. CET-1CEST,M3.5.0,M10.5.0/3">
+              <div class="info">Amsterdam: CET-1CEST,M3.5.0,M10.5.0/3</div>
+            </div>
+          </div>
         </div>
-        
-        <label>WiFi Password</label>
-        <input type="password" id="password" placeholder="Leave empty to keep current password">
-        <div class="info">Enter a new WiFi password only if you want to change it.</div>
-        
-        <label>ENTSO-E API Key</label>
-        <input type="text" id="apiKey" placeholder="Leave empty to keep current key">
-        <div class="info" id="apiKeyInfo">Enter a new key only if you want to change it.</div>
 
-        <label>Web Username</label>
-        <input type="text" id="webUser" placeholder="Username for this web interface">
+        <div class="card">
+          <div class="section-title">🔐 Web Access</div>
+          <div class="section-note">Login used to protect the dashboard, settings, API and OTA pages.</div>
+          <div class="field-grid">
+            <div>
+              <label>Web Username</label>
+              <input type="text" id="webUser" placeholder="Username for this web interface">
+            </div>
+            <div>
+              <label>Web Password</label>
+              <input type="password" id="webPass" placeholder="Leave empty to keep current password">
+              <div class="info" id="webPassInfo">Used to protect the STA-mode web interface.</div>
+            </div>
+          </div>
+        </div>
 
-        <label>Web Password</label>
-        <input type="password" id="webPass" placeholder="Leave empty to keep current password">
-        <div class="info" id="webPassInfo">Used to protect the STA-mode web interface.</div>
-        
-        <label>Bidding Zone (EIC Code)</label>
-        <input type="text" id="biddingZone" placeholder="e.g. 10YNL----------L">
-        <div class="info">NL: 10YNL----------L · BE: 10YBE----------2 · DE: 10Y1001A1001A82H</div>
-        
-        <label>Timezone (POSIX)</label>
-        <input type="text" id="timezone" placeholder="e.g. CET-1CEST,M3.5.0,M10.5.0/3">
-        <div class="info">Amsterdam: CET-1CEST,... · London: GMT0 · New York: EST5EDT,...</div>
-        
-        <button type="submit" class="btn">Save Settings & Restart</button>
-      </form>
+        <div class="card">
+          <div class="section-title">💡 Display</div>
+          <div class="section-note">Matrix brightness. Lower values reduce glare and power use.</div>
+          <label>Matrix Brightness</label>
+          <div class="range-row">
+            <input type="range" id="ledBrightness" min="1" max="100" step="1" value="20">
+            <div class="range-value"><span id="brightnessValue">20</span>%</div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn">Save Settings & Restart</button>
       <div class="status" id="status"></div>
-    </div>
+    </form>
     <div class="back"><a href="/">&larr; Back to Dashboard</a></div>
   </div>
   <script>
@@ -285,6 +337,8 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
     const scanBtn = document.getElementById('scanBtn');
     const manualSsidGroup = document.getElementById('manualSsidGroup');
     const manualSsidInput = document.getElementById('manualSsid');
+    const ledBrightness = document.getElementById('ledBrightness');
+    const brightnessValue = document.getElementById('brightnessValue');
     let currentSsid = '';
 
     function setSelectedSsid(value) {
@@ -354,6 +408,10 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
         scanInfo.textContent = ssidSelect.value ? 'Selected: ' + ssidSelect.value : 'Select a network from the list.';
       }
     });
+
+    ledBrightness.addEventListener('input', () => {
+      brightnessValue.textContent = ledBrightness.value;
+    });
     
     // Load current settings
     async function loadSettings() {
@@ -368,6 +426,8 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
         document.getElementById('webPassInfo').textContent = data.hasWebPassword ? 'Current password is saved. Leave empty to keep it.' : 'No web password saved yet.';
         document.getElementById('biddingZone').value = data.biddingZone || '';
         document.getElementById('timezone').value = data.timezone || '';
+        ledBrightness.value = data.ledBrightness || 20;
+        brightnessValue.textContent = ledBrightness.value;
         await scanNetworks();
       } catch(e) {
         status.className = 'status error';
@@ -396,6 +456,7 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
       data.append('webPass', document.getElementById('webPass').value);
       data.append('biddingZone', document.getElementById('biddingZone').value);
       data.append('timezone', document.getElementById('timezone').value);
+      data.append('ledBrightness', ledBrightness.value);
       
       try {
         const res = await fetch('/api/config', { method: 'POST', body: data });

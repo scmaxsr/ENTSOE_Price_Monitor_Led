@@ -15,9 +15,10 @@ static const uint16_t port = 443;
 static const long gmtOffset_sec = 3600;
 static const int daylightOffset_sec = 3600;
 #define timeZoneNL "CET-1CEST,M3.5.0,M10.5.0/3"
-#define ledBrightness 20
+#define defaultLedBrightness 20
 #define configFile "/cfg"
 #define portalDomain "pricemonitor"
+#define firmwareVersion "v1.3.0"
 
 // Configuration structure
 struct Config {
@@ -28,6 +29,7 @@ struct Config {
   char timezone[48];
   char webUser[32];
   char webPass[64];
+  uint8_t ledBrightness;
   bool configured;
 };
 

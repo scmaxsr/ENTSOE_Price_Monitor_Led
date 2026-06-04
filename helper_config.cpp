@@ -65,6 +65,7 @@ bool loadConfig() {
   String tz   = jsonVal(j, "tz");
   String webUser = jsonVal(j, "webUser");
   String webPass = jsonVal(j, "webPass");
+  String brightness = jsonVal(j, "brightness");
 
   if (ssid.length() == 0 || webUser.length() == 0 || webPass.length() == 0) {
     Serial.println("Config load failed: ssid or web login missing");
@@ -78,10 +79,15 @@ bool loadConfig() {
   tz.toCharArray(config.timezone, sizeof(config.timezone));
   webUser.toCharArray(config.webUser, sizeof(config.webUser));
   webPass.toCharArray(config.webPass, sizeof(config.webPass));
+  int brightnessValue = brightness.length() > 0 ? brightness.toInt() : defaultLedBrightness;
+  if (brightnessValue < 1) brightnessValue = 1;
+  if (brightnessValue > 100) brightnessValue = 100;
+  config.ledBrightness = (uint8_t)brightnessValue;
   config.configured = true;
 
-  Serial.printf("Loaded config: ssid='%s' pwdlen=%d apiKeylen=%d zone='%s' tz='%s' webUser='%s'\n",
-                config.ssid, strlen(config.password), strlen(config.apiKey), config.biddingZone, config.timezone, config.webUser);
+  Serial.printf("Loaded config: ssid='%s' pwdlen=%d apiKeylen=%d zone='%s' tz='%s' webUser='%s' brightness=%d\n",
+                config.ssid, strlen(config.password), strlen(config.apiKey),
+                config.biddingZone, config.timezone, config.webUser, config.ledBrightness);
   return true;
 }
 
@@ -97,7 +103,8 @@ bool saveConfig() {
              "\"zone\":\"" + jsonEscape(String(config.biddingZone)) + "\","
              "\"tz\":\"" + jsonEscape(String(config.timezone)) + "\","
              "\"webUser\":\"" + jsonEscape(String(config.webUser)) + "\","
-             "\"webPass\":\"" + jsonEscape(String(config.webPass)) + "\"}";
+             "\"webPass\":\"" + jsonEscape(String(config.webPass)) + "\","
+             "\"brightness\":\"" + String(config.ledBrightness) + "\"}";
   f.print(j);
   f.close();
   Serial.printf("Saved config to %s (%d bytes)\n", configFile, j.length());

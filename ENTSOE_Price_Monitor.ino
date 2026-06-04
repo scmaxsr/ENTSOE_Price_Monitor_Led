@@ -18,6 +18,9 @@ DNSServer dnsServer;
 Config config;
 entsoe_prices PRICES;
 const char* apSSID = "ENTSOE-Monitor-Config";
+static int lastPriceRefreshHour = -1;
+static unsigned long lastHourCheckMs = 0;
+static const unsigned long HOUR_CHECK_INTERVAL_MS = 30000;
 
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -129,6 +132,7 @@ void setup() {
     matrixShowConnecting();
     initTime(config.timezone);
     getEntsoePrices();
+    lastPriceRefreshHour = getHoursOfDay();
     matrixShowEntsoe();
     Serial.println("Starting local web interface on internal network...");
     initWebInterface();
@@ -162,6 +166,23 @@ void setup() {
 void loop() {
   if (apMode) {
     dnsServer.processNextRequest();
+  } else {
+    unsigned long now = millis();
+    if (lastHourCheckMs == 0 || now - lastHourCheckMs >= HOUR_CHECK_INTERVAL_MS) {
+      lastHourCheckMs = now;
+      int currentHour = getHoursOfDay();
+      if (currentHour >= 0 && lastPriceRefreshHour >= 0 && currentHour != lastPriceRefreshHour) {
+        Serial.printf("Hour changed from %d to %d, refreshing price window...\n",
+                      lastPriceRefreshHour, currentHour);
+        updateTime(config.timezone);
+        getEntsoePrices();
+        matrixShowEntsoe();
+        int refreshedHour = getHoursOfDay();
+        lastPriceRefreshHour = refreshedHour >= 0 ? refreshedHour : currentHour;
+      } else if (currentHour >= 0 && lastPriceRefreshHour < 0) {
+        lastPriceRefreshHour = currentHour;
+      }
+    }
   }
   server.handleClient();
 }
