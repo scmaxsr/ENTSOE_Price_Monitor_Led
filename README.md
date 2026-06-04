@@ -82,21 +82,23 @@ The runtime configuration can be changed through the web settings page after the
 
 The dashboard and API are protected with basic authentication in the web helper.
 
-## OTA Firmware
+## OTA Firmware Versions
 
-A compiled ESP8266 OTA firmware image is included:
+Compiled ESP8266 OTA firmware images are versioned with Git tags.
+
+Current firmware tag:
 
 ```text
-firmware/ENTSOE_Price_Monitor_Led_esp8266.bin
+v1.2.0
 ```
 
-Use this file on the device OTA update page:
+Download the tagged source or open the tag in GitHub to use the firmware image from that version. Upload the `.bin` file on the device OTA update page:
 
 ```text
 http://<device-ip>/update
 ```
 
-The binary was built for the `d1_mini` PlatformIO environment shown above.
+Firmware builds are made for the `d1_mini` PlatformIO environment shown above.
 
 ## Using These Sources
 
