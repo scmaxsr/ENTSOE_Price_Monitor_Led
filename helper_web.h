@@ -58,6 +58,9 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     .status-badge { padding: 6px 14px; border-radius: 20px; font-size: 0.75em; background: #1a1a2e; border: 1px solid #333; }
     .status-badge.online { border-color: #00b894; color: #00b894; }
     .status-badge.offline { border-color: #d63031; color: #d63031; }
+    .update-alert { display: none; align-items: center; justify-content: space-between; gap: 12px; background: #fdcb6e; color: #1a1a2e; padding: 12px 14px; margin-bottom: 16px; border-radius: 8px; font-size: 0.8em; font-weight: 600; }
+    .update-alert.visible { display: flex; }
+    .update-alert a { color: #1a1a2e; background: #fff; padding: 7px 10px; border-radius: 6px; text-decoration: none; white-space: nowrap; }
     .nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
     .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 0.85em; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
     .btn-primary { background: #00d4aa; color: #1a1a2e; }
@@ -89,6 +92,11 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
       <span class="status-badge online" id="apiBadge">Prices Loaded</span>
       <span class="status-badge" id="zoneBadge">Zone: NL</span>
       <span class="status-badge" id="timeBadge">--:--</span>
+    </div>
+
+    <div class="update-alert" id="updateAlert">
+      <span id="updateMessage">A new firmware version is available.</span>
+      <a href="/settings">Open Settings</a>
     </div>
     
     <div class="card">
@@ -125,6 +133,39 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
   <script>
     const levelColors = { 1: '#00b894', 2: '#55c74d', 3: '#fdcb6e', 4: '#e17055', 5: '#d63031' };
     const levelLabels = { 1: 'Very Cheap', 2: 'Cheap', 3: 'Normal', 4: 'Expensive', 5: 'Very Expensive' };
+    const currentFirmwareVersion = '" firmwareVersion "';
+    const latestReleaseApi = 'https://api.github.com/repos/scmaxsr/ENTSOE_Price_Monitor_Led/releases/latest';
+
+    function versionParts(version) {
+      return version.replace(/^v/i, '').split('.').map(part => parseInt(part, 10) || 0);
+    }
+
+    function isNewerVersion(latest, current) {
+      const latestParts = versionParts(latest);
+      const currentParts = versionParts(current);
+      const length = Math.max(latestParts.length, currentParts.length);
+      for (let i = 0; i < length; i++) {
+        const latestPart = latestParts[i] || 0;
+        const currentPart = currentParts[i] || 0;
+        if (latestPart > currentPart) return true;
+        if (latestPart < currentPart) return false;
+      }
+      return false;
+    }
+
+    async function checkLatestVersion() {
+      try {
+        const res = await fetch(latestReleaseApi, { cache: 'no-store' });
+        if (!res.ok) return;
+        const release = await res.json();
+        if (!release.tag_name || !isNewerVersion(release.tag_name, currentFirmwareVersion)) return;
+        document.getElementById('updateMessage').textContent =
+          'Firmware ' + release.tag_name + ' is available. Installed: ' + currentFirmwareVersion + '.';
+        document.getElementById('updateAlert').classList.add('visible');
+      } catch(err) {
+        // Keep the dashboard quiet when GitHub is temporarily unavailable.
+      }
+    }
     
     async function loadPrices() {
       try {
@@ -197,7 +238,9 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     
     // Auto-refresh every 60 seconds
     loadPrices();
+    checkLatestVersion();
     setInterval(loadPrices, 60000);
+    setInterval(checkLatestVersion, 3600000);
   </script>
 </body>
 </html>
