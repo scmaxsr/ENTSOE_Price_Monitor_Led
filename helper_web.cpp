@@ -1,5 +1,6 @@
 #include "helper_web.h"
 #include "helper_config.h"
+#include "helper_ota.h"
 #include "helper_wifi_portal.h"
 #include <time.h>
 
@@ -196,6 +197,17 @@ void handleApiReset() {
   ESP.restart();
 }
 
+void handleApiLatestOta() {
+  if (!checkWebAuth()) return;
+  if (!requestLatestOtaUpdate()) {
+    server.send(409, "application/json",
+                "{\"ok\":false,\"message\":\"OTA update already queued\"}");
+    return;
+  }
+  server.send(202, "application/json",
+              "{\"ok\":true,\"message\":\"Downloading the latest GitHub release. The device will reboot after installation.\"}");
+}
+
 void initWebInterface() {
   // Dashboard
   server.on("/", []() {
@@ -212,6 +224,7 @@ void initWebInterface() {
   server.on("/api/config", HTTP_GET, handleApiConfig);
   server.on("/api/config", HTTP_POST, handleApiSaveConfig);
   server.on("/api/reset", HTTP_POST, handleApiReset);
+  server.on("/api/ota/latest", HTTP_POST, handleApiLatestOta);
   server.on("/scan", []() {
     if (!checkWebAuth()) return;
     handleScan();
@@ -235,6 +248,7 @@ void initWebInterface() {
   Serial.println("  /api/prices  - JSON price data");
   Serial.println("  /api/config  - JSON config data");
   Serial.println("  /api/reset   - Factory reset");
+  Serial.println("  /api/ota/latest - Install latest GitHub release");
   Serial.println("  /scan        - WiFi network scan");
   startWiFiScan();
 }

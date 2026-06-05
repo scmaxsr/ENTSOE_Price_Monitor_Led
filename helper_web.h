@@ -116,8 +116,6 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     <div class="nav">
       <a href="/dashboard" class="btn btn-primary">🔄 Refresh</a>
       <a href="/settings" class="btn btn-secondary">⚙️ Settings</a>
-      <a href="/update" class="btn btn-secondary">📦 OTA Update</a>
-      <a href="/reset" class="btn btn-danger">🔁 Reset</a>
     </div>
     
     <p class="refresh-note">Auto-refreshes every 60 seconds</p>
@@ -234,6 +232,12 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
     .range-value { text-align: center; padding: 8px 6px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: #00d4aa; font-weight: 700; font-size: 0.85em; }
     .btn { width: 100%; padding: 12px; margin-top: 20px; background: #00d4aa; color: #1a1a2e; border: none; border-radius: 8px; font-size: 1em; font-weight: 700; cursor: pointer; }
     .btn:hover { background: #00b894; }
+    .management-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .action-btn { display: flex; align-items: center; justify-content: center; width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 0.9em; font-weight: 700; text-decoration: none; cursor: pointer; }
+    .action-ota { background: #333; color: #eee; }
+    .action-ota:hover { background: #444; }
+    .action-reset { background: #d63031; color: #fff; }
+    .action-reset:hover { background: #b71c1c; }
     .status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 0.85em; display: none; }
     .status.success { display: block; background: #00b89422; border: 1px solid #00b894; color: #00d4aa; }
     .status.error { display: block; background: #d6303122; border: 1px solid #d63031; color: #ff7675; }
@@ -247,7 +251,7 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
     .ssid-row button:disabled { opacity: 0.5; cursor: not-allowed; }
     #manualSsidGroup { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #333; }
     #manualSsidGroup label { margin-top: 0; font-size: 0.8em; color: #00d4aa; }
-    @media (max-width: 760px) { .settings { max-width: 520px; } .settings-grid { grid-template-columns: 1fr; } .settings-grid .card { min-height: 0; } .field-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .settings { max-width: 520px; } .settings-grid { grid-template-columns: 1fr; } .settings-grid .card { min-height: 0; } .field-grid { grid-template-columns: 1fr; } .management-actions { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -327,6 +331,11 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
       <button type="submit" class="btn">Save Settings & Restart</button>
       <div class="status" id="status"></div>
     </form>
+    <div class="management-actions">
+      <button type="button" class="action-btn action-ota" id="otaBtn" onclick="installLatestOta()">📦 Install Latest Release</button>
+      <a href="/reset" class="action-btn action-reset">🔁 Factory Reset</a>
+    </div>
+    <div class="status" id="otaStatus"></div>
     <div class="back"><a href="/">&larr; Back to Dashboard</a></div>
   </div>
   <script>
@@ -412,6 +421,27 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
     ledBrightness.addEventListener('input', () => {
       brightnessValue.textContent = ledBrightness.value;
     });
+
+    async function installLatestOta() {
+      if (!confirm('Download and install the latest firmware release from GitHub?')) return;
+      const btn = document.getElementById('otaBtn');
+      const otaStatus = document.getElementById('otaStatus');
+      btn.disabled = true;
+      btn.textContent = 'Downloading update...';
+      otaStatus.className = 'status success';
+      otaStatus.textContent = 'The device is downloading the latest release. Keep it powered on.';
+      try {
+        const res = await fetch('/api/ota/latest', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'OTA update could not start');
+        otaStatus.textContent = data.message;
+      } catch(e) {
+        otaStatus.className = 'status error';
+        otaStatus.textContent = 'Error: ' + e.message;
+        btn.disabled = false;
+        btn.textContent = '📦 Install Latest Release';
+      }
+    }
     
     // Load current settings
     async function loadSettings() {
@@ -548,6 +578,7 @@ void handleApiPrices();
 void handleApiConfig();
 void handleApiSaveConfig();
 void handleApiReset();
+void handleApiLatestOta();
 void initWebInterface();
 
 #endif // HELPER_WEB_H

@@ -18,7 +18,8 @@ static const int daylightOffset_sec = 3600;
 #define defaultLedBrightness 20
 #define configFile "/cfg"
 #define portalDomain "pricemonitor"
-#define firmwareVersion "v1.3.0"
+#define firmwareVersion "v1.3.1"
+#define githubLatestFirmwareUrl "https://github.com/scmaxsr/ENTSOE_Price_Monitor_Led/releases/latest/download/ENTSOE_Price_Monitor_Led_esp8266.bin"
 
 // Configuration structure
 struct Config {

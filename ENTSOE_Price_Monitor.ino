@@ -10,6 +10,7 @@
 #include "helper_time.h"
 #include "helper_entsoe.h"
 #include "helper_led.h"
+#include "helper_ota.h"
 
 bool apMode = false;
 
@@ -185,4 +186,7 @@ void loop() {
     }
   }
   server.handleClient();
+  if (!apMode) {
+    processLatestOtaUpdate();
+  }
 }
