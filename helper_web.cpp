@@ -85,6 +85,7 @@ void handleApiPrices() {
   json += ",\"avgCtKwh\":" + String(avgCtKwh, 2);
   json += ",\"currentCtKwh\":" + String(currentCtKwh, 2);
   json += ",\"zone\":\"" + String(config.biddingZone) + "\"";
+  json += ",\"firmwareVersion\":\"" + String(firmwareVersion) + "\"";
   json += ",\"debugHttp\":" + String(entsoeLastHttpCode);
   json += ",\"debugResponseLen\":" + String(entsoeLastResponseLength);
   json += ",\"debugPoints\":" + String(entsoeLastPointCount);

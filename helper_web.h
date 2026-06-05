@@ -127,13 +127,13 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     </div>
     
     <p class="refresh-note">Auto-refreshes every 60 seconds</p>
-    <div class="footer">ENTSO-E Price Monitor " firmwareVersion " · 8×8 LED Matrix</div>
+    <div class="footer">ENTSO-E Price Monitor <span id="firmwareVersion">--</span> · 8×8 LED Matrix</div>
   </div>
   
   <script>
     const levelColors = { 1: '#00b894', 2: '#55c74d', 3: '#fdcb6e', 4: '#e17055', 5: '#d63031' };
     const levelLabels = { 1: 'Very Cheap', 2: 'Cheap', 3: 'Normal', 4: 'Expensive', 5: 'Very Expensive' };
-    const currentFirmwareVersion = '" firmwareVersion "';
+    let currentFirmwareVersion = '';
     const latestReleaseApi = 'https://api.github.com/repos/scmaxsr/ENTSOE_Price_Monitor_Led/releases/latest';
 
     function versionParts(version) {
@@ -154,6 +154,7 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     }
 
     async function checkLatestVersion() {
+      if (!currentFirmwareVersion) return;
       try {
         const res = await fetch(latestReleaseApi, { cache: 'no-store' });
         if (!res.ok) return;
@@ -234,11 +235,13 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
       
       document.getElementById('zoneBadge').textContent = 'Zone: ' + data.zone;
       document.getElementById('timeBadge').textContent = data.time;
+      currentFirmwareVersion = data.firmwareVersion || '';
+      document.getElementById('firmwareVersion').textContent = currentFirmwareVersion || '--';
+      checkLatestVersion();
     }
     
     // Auto-refresh every 60 seconds
     loadPrices();
-    checkLatestVersion();
     setInterval(loadPrices, 60000);
     setInterval(checkLatestVersion, 3600000);
   </script>
