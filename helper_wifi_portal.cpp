@@ -197,6 +197,7 @@ bool connectWithStoredConfig() {
   Serial.printf("Zone: %s, Timezone: %s\n", config.biddingZone, config.timezone);
   
   WiFi.mode(WIFI_STA);
+  WiFi.hostname(portalDomain);
   WiFi.setAutoConnect(true);
   WiFi.setAutoReconnect(true);
   WiFi.begin(config.ssid, config.password);

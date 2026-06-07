@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 #include <DNSServer.h>
 #include <FS.h>
 #include "helper_config.h"
@@ -21,7 +22,9 @@ entsoe_prices PRICES;
 const char* apSSID = "ENTSOE-Monitor-Config";
 static int lastPriceRefreshHour = -1;
 static unsigned long lastHourCheckMs = 0;
+static unsigned long lastPriceRefreshAttemptMs = 0;
 static const unsigned long HOUR_CHECK_INTERVAL_MS = 30000;
+static const unsigned long PRICE_RETRY_INTERVAL_MS = 300000;
 
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -103,6 +106,7 @@ void setup() {
     Serial.printf("Config found: SSID=\"%s\" zone=%s\n",config.ssid,config.biddingZone);
     Serial.print("Trying STA... ");
     WiFi.mode(WIFI_STA);
+    WiFi.hostname(portalDomain);
     WiFi.begin(config.ssid, config.password);
     int w=0;
     const int maxAttempts = 60; // 30 seconds
@@ -132,14 +136,20 @@ void setup() {
     matrixInitialize();
     matrixShowConnecting();
     initTime(config.timezone);
-    getEntsoePrices();
-    lastPriceRefreshHour = getHoursOfDay();
+    bool pricesLoaded = getEntsoePrices();
+    lastPriceRefreshHour = pricesLoaded ? getHoursOfDay() : -1;
     matrixShowEntsoe();
     Serial.println("Starting local web interface on internal network...");
     initWebInterface();
     server.on("/status",handleStatus);
     server.onNotFound([]{server.send(404,"text/plain","404");});
     server.begin();
+    if (MDNS.begin(portalDomain)) {
+      MDNS.addService("http", "tcp", 80);
+      Serial.printf("mDNS available at http://%s.local\n", portalDomain);
+    } else {
+      Serial.println("mDNS initialization failed");
+    }
     Serial.printf("Web interface available at http://%s\n", WiFi.localIP().toString().c_str());
   } else {
     apMode = true;
@@ -168,20 +178,30 @@ void loop() {
   if (apMode) {
     dnsServer.processNextRequest();
   } else {
+    MDNS.update();
     unsigned long now = millis();
     if (lastHourCheckMs == 0 || now - lastHourCheckMs >= HOUR_CHECK_INTERVAL_MS) {
       lastHourCheckMs = now;
       int currentHour = getHoursOfDay();
-      if (currentHour >= 0 && lastPriceRefreshHour >= 0 && currentHour != lastPriceRefreshHour) {
+      bool refreshRequired = currentHour >= 0 &&
+                             (lastPriceRefreshHour < 0 || currentHour != lastPriceRefreshHour);
+      bool retryAllowed = lastPriceRefreshAttemptMs == 0 ||
+                          now - lastPriceRefreshAttemptMs >= PRICE_RETRY_INTERVAL_MS;
+      if (refreshRequired && retryAllowed) {
         Serial.printf("Hour changed from %d to %d, refreshing price window...\n",
                       lastPriceRefreshHour, currentHour);
+        lastPriceRefreshAttemptMs = now;
         updateTime(config.timezone);
-        getEntsoePrices();
-        matrixShowEntsoe();
-        int refreshedHour = getHoursOfDay();
-        lastPriceRefreshHour = refreshedHour >= 0 ? refreshedHour : currentHour;
+        if (getEntsoePrices()) {
+          matrixShowEntsoe();
+          int refreshedHour = getHoursOfDay();
+          lastPriceRefreshHour = refreshedHour >= 0 ? refreshedHour : currentHour;
+          lastPriceRefreshAttemptMs = 0;
+        } else {
+          Serial.println("Price refresh failed; retrying in 5 minutes");
+        }
       } else if (currentHour >= 0 && lastPriceRefreshHour < 0) {
-        lastPriceRefreshHour = currentHour;
+        // Keep retrying until the first valid price window has been loaded.
       }
     }
   }

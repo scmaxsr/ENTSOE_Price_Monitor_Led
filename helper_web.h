@@ -54,10 +54,13 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     .stat { text-align: center; padding: 8px; background: #1a1a2e; border-radius: 8px; }
     .stat-value { font-size: 1.4em; font-weight: 700; color: #00d4aa; }
     .stat-label { font-size: 0.7em; color: #888; margin-top: 2px; }
-    .status-bar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 16px; }
+    .status-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: center; margin-bottom: 16px; }
     .status-badge { padding: 6px 14px; border-radius: 20px; font-size: 0.75em; background: #1a1a2e; border: 1px solid #333; }
     .status-badge.online { border-color: #00b894; color: #00b894; }
     .status-badge.offline { border-color: #d63031; color: #d63031; }
+    .status-actions { display: flex; gap: 8px; margin-left: auto; }
+    .status-settings { padding: 6px 10px; border-radius: 6px; background: #333; color: #eee; font-size: 0.75em; font-weight: 600; text-decoration: none; }
+    .status-settings:hover { background: #444; }
     .update-alert { display: none; align-items: center; justify-content: space-between; gap: 12px; background: #fdcb6e; color: #1a1a2e; padding: 12px 14px; margin-bottom: 16px; border-radius: 8px; font-size: 0.8em; font-weight: 600; }
     .update-alert.visible { display: flex; }
     .update-alert a { color: #1a1a2e; background: #fff; padding: 7px 10px; border-radius: 6px; text-decoration: none; white-space: nowrap; }
@@ -79,7 +82,7 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     .legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: 0 0 auto; }
     .footer { text-align: center; font-size: 0.65em; color: #555; margin-top: 20px; }
     .refresh-note { text-align: center; font-size: 0.7em; color: #666; margin-top: 8px; }
-    @media (max-width: 520px) { .legend { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .legend { grid-template-columns: repeat(2, 1fr); } .status-actions { width: 100%; justify-content: center; margin-left: 0; } }
   </style>
 </head>
 <body>
@@ -90,8 +93,12 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     <div class="status-bar">
       <span class="status-badge online" id="wifiBadge">WiFi Connected</span>
       <span class="status-badge online" id="apiBadge">Prices Loaded</span>
-      <span class="status-badge" id="zoneBadge">Zone: NL</span>
-      <span class="status-badge" id="timeBadge">--:--</span>
+      <span class="status-badge online" id="zoneBadge">Zone: NL</span>
+      <span class="status-badge online" id="timeBadge">--:--</span>
+      <div class="status-actions">
+        <a href="/diagnostics" class="status-settings">🔎 Diagnostics</a>
+        <a href="/settings" class="status-settings">⚙️ Settings</a>
+      </div>
     </div>
 
     <div class="update-alert" id="updateAlert">
@@ -103,11 +110,11 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
       <h2>📊 Hourly Prices</h2>
       <div class="bar-chart" id="chart"></div>
       <div class="legend">
-        <div class="legend-item"><span class="legend-dot level-1"></span>Very cheap</div>
-        <div class="legend-item"><span class="legend-dot level-2"></span>Cheap</div>
-        <div class="legend-item"><span class="legend-dot level-3"></span>Normal</div>
-        <div class="legend-item"><span class="legend-dot level-4"></span>Expensive</div>
-        <div class="legend-item"><span class="legend-dot level-5"></span>Very expensive</div>
+        <div class="legend-item"><span class="legend-dot level-1"></span>Very cheap · &lt; 0.005 euro</div>
+        <div class="legend-item"><span class="legend-dot level-2"></span>Cheap · 0.005-0.050</div>
+        <div class="legend-item"><span class="legend-dot level-3"></span>Normal · 0.050-0.100</div>
+        <div class="legend-item"><span class="legend-dot level-4"></span>Expensive · 0.100-0.150</div>
+        <div class="legend-item"><span class="legend-dot level-5"></span>Very expensive · &ge; 0.150 euro</div>
       </div>
     </div>
     
@@ -120,12 +127,7 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
         <div class="stat"><div class="stat-value" id="currentPrice">--</div><div class="stat-label">Current euro/kWh</div></div>
       </div>
     </div>
-    
-    <div class="nav">
-      <a href="/dashboard" class="btn btn-primary">🔄 Refresh</a>
-      <a href="/settings" class="btn btn-secondary">⚙️ Settings</a>
-    </div>
-    
+
     <p class="refresh-note">Auto-refreshes every 60 seconds</p>
     <div class="footer">ENTSO-E Price Monitor <span id="firmwareVersion">--</span> · 8×8 LED Matrix</div>
   </div>
@@ -181,7 +183,7 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
     function formatEuroFromCtKwh(value) {
       return (value / 100).toFixed(3) + ' euro';
     }
-    
+
     function updateDashboard(data) {
       const chart = document.getElementById('chart');
       chart.innerHTML = '';
@@ -249,6 +251,108 @@ const char dashboardHTML[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
+const char diagnosticsHTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diagnostics - ENTSO-E Price Monitor</title>
+  <link rel="icon" href="data:,">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; }
+    .page { max-width: 980px; width: 100%; }
+    .header { text-align: center; margin-bottom: 10px; }
+    h1 { color: #00d4aa; font-size: 1.3em; }
+    .management-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
+    .action-btn { display: flex; align-items: center; justify-content: center; height: 32px; padding: 0 11px; border: none; border-radius: 6px; background: #333; color: #eee; font-size: 0.78em; font-weight: 600; text-decoration: none; cursor: pointer; }
+    .action-btn:hover { background: #444; }
+    .diagnostics-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+    .card { background: #16213e; border: 1px solid #00d4aa33; border-radius: 12px; padding: 20px; min-width: 0; }
+    .section-title { display: flex; align-items: center; gap: 8px; color: #00d4aa; font-size: 0.95em; font-weight: 700; margin-bottom: 4px; }
+    .section-note { color: #888; font-size: 0.75em; line-height: 1.35; margin-bottom: 14px; }
+    .diagnostic { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; padding: 8px 0; border-bottom: 1px solid #ffffff0d; }
+    .diagnostic:last-child { border-bottom: none; }
+    .label { color: #aaa; font-size: 0.78em; }
+    .value { color: #eee; font-size: 0.85em; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+    .status { color: #888; font-size: 0.75em; text-align: center; margin-top: 14px; }
+    .error { color: #ff7675; }
+    @media (max-width: 760px) { .page { max-width: 520px; } .management-actions { justify-content: center; } .diagnostics-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="header">
+      <h1>🔎 Diagnostics</h1>
+    </div>
+    <div class="management-actions">
+      <a href="/" class="action-btn">📊 Dashboard</a>
+      <a href="/settings" class="action-btn">⚙️ Settings</a>
+    </div>
+    <div class="diagnostics-grid">
+      <section class="card">
+        <div class="section-title">📊 Price Data</div>
+        <div class="section-note">Current source and availability of the rolling price window.</div>
+        <div class="diagnostic"><div class="label">Data source</div><div class="value" id="source">--</div></div>
+        <div class="diagnostic"><div class="label">Last success</div><div class="value" id="success">--</div></div>
+        <div class="diagnostic"><div class="label">Data age</div><div class="value" id="age">--</div></div>
+        <div class="diagnostic"><div class="label">Available price hours</div><div class="value" id="hours">--</div></div>
+      </section>
+      <section class="card">
+        <div class="section-title">🌐 API Status</div>
+        <div class="section-note">Latest response from the active electricity price endpoint.</div>
+        <div class="diagnostic"><div class="label">HTTP status</div><div class="value" id="http">--</div></div>
+        <div class="diagnostic"><div class="label">Firmware</div><div class="value" id="firmware">--</div></div>
+      </section>
+      <section class="card">
+        <div class="section-title">🧠 System Memory</div>
+        <div class="section-note">ESP8266 heap availability and fragmentation after the last update.</div>
+        <div class="diagnostic"><div class="label">Free heap</div><div class="value" id="heap">--</div></div>
+        <div class="diagnostic"><div class="label">Largest free block</div><div class="value" id="block">--</div></div>
+        <div class="diagnostic"><div class="label">Heap fragmentation</div><div class="value" id="fragmentation">--</div></div>
+      </section>
+    </div>
+    <div class="status" id="status">Auto-refreshes every 60 seconds</div>
+  </main>
+  <script>
+    function formatAge(seconds) {
+      if (seconds < 0) return 'Unknown';
+      if (seconds < 60) return seconds + ' sec';
+      if (seconds < 3600) return Math.floor(seconds / 60) + ' min';
+      return Math.floor(seconds / 3600) + ' h ' + Math.floor((seconds % 3600) / 60) + ' min';
+    }
+
+    async function loadDiagnostics() {
+      const status = document.getElementById('status');
+      try {
+        const response = await fetch('/api/prices');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        document.getElementById('source').textContent = data.diagnosticSource || '--';
+        document.getElementById('success').textContent = data.diagnosticLastSuccess || '--';
+        document.getElementById('age').textContent = formatAge(data.diagnosticAgeSeconds);
+        document.getElementById('http').textContent = data.diagnosticHttp;
+        document.getElementById('hours').textContent = data.diagnosticHours;
+        document.getElementById('heap').textContent = data.diagnosticFreeHeap + ' B';
+        document.getElementById('block').textContent = data.diagnosticMaxBlock + ' B';
+        document.getElementById('fragmentation').textContent = data.diagnosticFragmentation + '%';
+        document.getElementById('firmware').textContent = data.firmwareVersion || '--';
+        status.className = 'status';
+        status.textContent = 'Auto-refreshes every 60 seconds';
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = 'Unable to load diagnostics: ' + error.message;
+      }
+    }
+
+    loadDiagnostics();
+    setInterval(loadDiagnostics, 60000);
+  </script>
+</body>
+</html>
+)rawliteral";
+
 // Settings HTML page (inline, simple form)
 const char settingsHTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -260,9 +364,10 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
   <link rel="icon" href="data:,">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; }
     .settings { max-width: 980px; width: 100%; }
-    h1 { text-align: center; color: #00d4aa; font-size: 1.3em; margin-bottom: 20px; }
+    .settings-header { text-align: center; margin-bottom: 10px; }
+    h1 { color: #00d4aa; font-size: 1.3em; }
     .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
     .settings-grid .card { min-height: 230px; }
     .card { background: #16213e; border: 1px solid #00d4aa33; border-radius: 12px; padding: 20px; margin-bottom: 0; min-width: 0; }
@@ -278,12 +383,9 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
     .range-value { text-align: center; padding: 8px 6px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: #00d4aa; font-weight: 700; font-size: 0.85em; }
     .btn { width: 100%; padding: 12px; margin-top: 20px; background: #00d4aa; color: #1a1a2e; border: none; border-radius: 8px; font-size: 1em; font-weight: 700; cursor: pointer; }
     .btn:hover { background: #00b894; }
-    .management-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-    .action-btn { display: flex; align-items: center; justify-content: center; width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 0.9em; font-weight: 700; text-decoration: none; cursor: pointer; }
-    .action-ota { background: #333; color: #eee; }
-    .action-ota:hover { background: #444; }
-    .action-reset { background: #d63031; color: #fff; }
-    .action-reset:hover { background: #b71c1c; }
+    .management-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
+    .action-btn { display: flex; align-items: center; justify-content: center; height: 32px; padding: 0 11px; border: none; border-radius: 6px; background: #333; color: #eee; font-size: 0.78em; font-weight: 600; text-decoration: none; cursor: pointer; }
+    .action-btn:hover { background: #444; }
     .status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 0.85em; display: none; }
     .status.success { display: block; background: #00b89422; border: 1px solid #00b894; color: #00d4aa; }
     .status.error { display: block; background: #d6303122; border: 1px solid #d63031; color: #ff7675; }
@@ -297,12 +399,20 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
     .ssid-row button:disabled { opacity: 0.5; cursor: not-allowed; }
     #manualSsidGroup { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #333; }
     #manualSsidGroup label { margin-top: 0; font-size: 0.8em; color: #00d4aa; }
-    @media (max-width: 760px) { .settings { max-width: 520px; } .settings-grid { grid-template-columns: 1fr; } .settings-grid .card { min-height: 0; } .field-grid { grid-template-columns: 1fr; } .management-actions { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .settings { max-width: 520px; } .management-actions { justify-content: center; } .settings-grid { grid-template-columns: 1fr; } .settings-grid .card { min-height: 0; } .field-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="settings">
-    <h1>⚙️ Settings</h1>
+    <div class="settings-header">
+      <h1>⚙️ Settings</h1>
+    </div>
+    <div class="management-actions">
+      <a href="/" class="action-btn">📊 Dashboard</a>
+      <button type="button" class="action-btn" id="otaBtn" onclick="installLatestOta()">📦 Install Latest Release</button>
+      <a href="/reset" class="action-btn">🔁 Factory Reset</a>
+    </div>
+    <div class="status" id="otaStatus"></div>
     <form id="settingsForm">
       <div class="settings-grid">
         <div class="card">
@@ -377,12 +487,6 @@ const char settingsHTML[] PROGMEM = R"rawliteral(
       <button type="submit" class="btn">Save Settings & Restart</button>
       <div class="status" id="status"></div>
     </form>
-    <div class="management-actions">
-      <button type="button" class="action-btn action-ota" id="otaBtn" onclick="installLatestOta()">📦 Install Latest Release</button>
-      <a href="/reset" class="action-btn action-reset">🔁 Factory Reset</a>
-    </div>
-    <div class="status" id="otaStatus"></div>
-    <div class="back"><a href="/">&larr; Back to Dashboard</a></div>
   </div>
   <script>
     const form = document.getElementById('settingsForm');

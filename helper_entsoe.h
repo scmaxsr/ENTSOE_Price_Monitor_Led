@@ -50,6 +50,13 @@ extern char entsoeLastPreview[241];
 extern char entsoeLastSeriesSummary[321];
 extern char entsoeLastPointContext[321];
 extern char entsoeLastExpectedCheck[81];
+extern char entsoeLastSource[16];
+extern time_t entsoeLastSuccessEpoch;
+extern unsigned long entsoeLastSuccessMillis;
+extern int entsoeLastDisplayCount;
+extern uint32_t entsoeLastFreeHeap;
+extern uint16_t entsoeLastMaxFreeBlock;
+extern uint8_t entsoeLastHeapFragmentation;
 
 // Accessors for API keys and bidding zone (provided by WiFi/portal module)
 const char* getApiKey();
@@ -61,6 +68,6 @@ void printPrices();
 void calculateLevels();
 void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart, bool resetPrices = true);
 String getDateString(int daysFromNow);
-void getEntsoePrices();
+bool getEntsoePrices();
 
 #endif // HELPER_ENTSOE_H

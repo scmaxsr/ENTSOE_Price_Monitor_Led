@@ -1,4 +1,5 @@
 #include "helper_entsoe.h"
+#include "helper_memory.h"
 #include "helper_time.h"
 #include "settings.h"
 #include <BearSSLHelpers.h>
@@ -13,6 +14,13 @@ char entsoeLastPreview[241] = "";
 char entsoeLastSeriesSummary[321] = "";
 char entsoeLastPointContext[321] = "";
 char entsoeLastExpectedCheck[81] = "";
+char entsoeLastSource[16] = "None";
+time_t entsoeLastSuccessEpoch = 0;
+unsigned long entsoeLastSuccessMillis = 0;
+int entsoeLastDisplayCount = 0;
+uint32_t entsoeLastFreeHeap = 0;
+uint16_t entsoeLastMaxFreeBlock = 0;
+uint8_t entsoeLastHeapFragmentation = 0;
 
 String extractBetween(const String& data, const String& startMarker, const String& endMarker, int startPos) {
   int startIdx = data.indexOf(startMarker, startPos);
@@ -173,7 +181,7 @@ static bool averageSeriesHour(const ParsedSeries& series, time_t targetUtc, int*
 
 static void resetEntsoePrices() {
   PRICES.minimumPrice = 100000;
-  PRICES.maximumPrice = 0;
+  PRICES.maximumPrice = -100000;
   for (int i = 0; i < ENTSOE_PRICE_HOURS; i++) {
     PRICES.price[i].isNull = true;
     PRICES.price[i].price = 0;
@@ -243,23 +251,14 @@ void printPrices() {
 }
 
 void calculateLevels() {
-  int range = PRICES.maximumPrice - PRICES.minimumPrice;
-  if (range <= 0) {
-    for (int i = 0; i < ENTSOE_PRICE_HOURS; i++) {
-      if (!PRICES.price[i].isNull) {
-        PRICES.price[i].level = 3;
-      }
-    }
-    return;
-  }
   for (int i = 0; i < ENTSOE_PRICE_HOURS; i++) {
     if (!PRICES.price[i].isNull) {
-      float pct = (float)(PRICES.price[i].price - PRICES.minimumPrice) / range;
-      if (pct < 0.2)      PRICES.price[i].level = 1;
-      else if (pct < 0.4) PRICES.price[i].level = 2;
-      else if (pct < 0.6) PRICES.price[i].level = 3;
-      else if (pct < 0.8) PRICES.price[i].level = 4;
-      else                 PRICES.price[i].level = 5;
+      int price = PRICES.price[i].price;
+      if (price < priceVeryCheapMax)       PRICES.price[i].level = 1;
+      else if (price < priceCheapMax)      PRICES.price[i].level = 2;
+      else if (price < priceNormalMax)     PRICES.price[i].level = 3;
+      else if (price < priceExpensiveMax)  PRICES.price[i].level = 4;
+      else                                 PRICES.price[i].level = 5;
     }
   }
 }
@@ -650,7 +649,10 @@ static bool fetchEntsoeWindow(const String& periodStart, const String& periodEnd
 
   for (uint8_t apiIndex = 0; apiIndex < (sizeof(apiUrls) / sizeof(apiUrls[0])); apiIndex++) {
     std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
-    client->setInsecure();
+    if (!client->setFingerprint(entsoeTlsFingerprint)) {
+      Serial.println("Invalid ENTSO-E TLS fingerprint configuration");
+      return false;
+    }
 
     HTTPClient https;
     https.useHTTP10(true);
@@ -664,8 +666,7 @@ static bool fetchEntsoeWindow(const String& periodStart, const String& periodEnd
                  "&periodStart=" + periodStart +
                  "&periodEnd=" + periodEnd;
 
-    Serial.print("URL: ");
-    Serial.println(url);
+    Serial.printf("ENTSO-E endpoint %u: %s\n", apiIndex + 1, apiUrls[apiIndex]);
 
     Serial.print("[HTTPS] GET...\n");
     if (https.begin(*client, url)) {
@@ -818,16 +819,49 @@ static bool fetchSpotRollingPrices() {
   return countDisplayPrices() == MATRIX_DISPLAY_HOURS;
 }
 
-void getEntsoePrices() {
+bool getEntsoePrices() {
+  const MemorySnapshot memoryBefore = captureMemorySnapshot();
+  const entsoe_prices previousPrices = PRICES;
+  const bool hadPreviousPrices = entsoeLastSuccessMillis > 0;
+  logMemorySnapshot("Before price update", memoryBefore);
   Serial.println("\n--- Fetching ENTSO-E Prices ---");
 
   fetchEntsoeWindow(getLocalHourUtcString(-2), getLocalHourUtcString(10), true);
+  bool usedFallback = false;
   if (countDisplayPrices() < MATRIX_DISPLAY_HOURS) {
-    Serial.println("ENTSO-E XML did not fill rolling display window, using Spot HTTP fallback");
-    fetchSpotRollingPrices();
+    if (strcmp(getBiddingZone(), default_biddingZone) == 0) {
+      Serial.println("ENTSO-E XML did not fill rolling display window, using NL Spot fallback");
+      usedFallback = true;
+      fetchSpotRollingPrices();
+    } else {
+      Serial.println("No fallback available for the configured bidding zone");
+    }
+  }
+
+  entsoeLastDisplayCount = countDisplayPrices();
+  const bool success = entsoeLastDisplayCount == MATRIX_DISPLAY_HOURS;
+  if (success) {
+    strncpy(entsoeLastSource, usedFallback ? "Spot fallback" : "ENTSO-E",
+            sizeof(entsoeLastSource) - 1);
+    entsoeLastSource[sizeof(entsoeLastSource) - 1] = '\0';
+    entsoeLastSuccessEpoch = time(nullptr);
+    entsoeLastSuccessMillis = millis();
+  } else if (hadPreviousPrices) {
+    PRICES = previousPrices;
+    entsoeLastDisplayCount = countDisplayPrices();
+    Serial.println("Price update failed; retaining the previous price window");
+  } else {
+    Serial.println("Price update failed; no previous price window is available");
   }
 
   Serial.println("--- ENTSO-E Fetch Complete ---\n");
+  const MemorySnapshot memoryAfter = captureMemorySnapshot();
+  entsoeLastFreeHeap = memoryAfter.freeHeap;
+  entsoeLastMaxFreeBlock = memoryAfter.maxFreeBlock;
+  entsoeLastHeapFragmentation = memoryAfter.fragmentation;
+  logMemorySnapshot("After price update", memoryAfter);
+  logMemoryDelta(memoryBefore, memoryAfter);
+  return success;
 }
 
 

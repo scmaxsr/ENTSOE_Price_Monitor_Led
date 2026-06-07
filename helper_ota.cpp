@@ -5,6 +5,7 @@
 #include <WiFiClientSecureBearSSL.h>
 
 #include "settings.h"
+#include "helper_tls.h"
 
 static bool otaUpdatePending = false;
 
@@ -22,7 +23,8 @@ void processLatestOtaUpdate() {
   Serial.printf("Downloading latest OTA firmware: %s\n", githubLatestFirmwareUrl);
 
   BearSSL::WiFiClientSecure client;
-  client.setInsecure();
+  client.setBufferSizes(1024, 512);
+  client.setTrustAnchors(&getGithubTrustAnchors());
 
   ESPhttpUpdate.rebootOnUpdate(true);
   ESPhttpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);

@@ -10,6 +10,7 @@
 #define default_biddingZone "10YNL----------L"
 #define entsoeApi "https://web-api.tp.entsoe.eu/api"
 #define entsoeApiFallback "https://external-api.tp.entsoe.eu/api"
+#define entsoeTlsFingerprint "21 BA 4D 2A D5 82 B2 A4 DB 1F 4F C0 F9 5F 74 FD AB 32 15 2D"
 static const uint16_t port = 443;
 #define ntpServer "pool.ntp.org"
 static const long gmtOffset_sec = 3600;
@@ -18,8 +19,14 @@ static const int daylightOffset_sec = 3600;
 #define defaultLedBrightness 20
 #define configFile "/cfg"
 #define portalDomain "pricemonitor"
-#define firmwareVersion "v1.3.3"
+#define firmwareVersion "v1.4.0"
 #define githubLatestFirmwareUrl "https://github.com/scmaxsr/ENTSOE_Price_Monitor_Led/releases/latest/download/ENTSOE_Price_Monitor_Led_esp8266.bin"
+
+// Fixed wholesale day-ahead price thresholds in EUR/MWh multiplied by 100.
+#define priceVeryCheapMax 500
+#define priceCheapMax 5000
+#define priceNormalMax 10000
+#define priceExpensiveMax 15000
 
 // Configuration structure
 struct Config {

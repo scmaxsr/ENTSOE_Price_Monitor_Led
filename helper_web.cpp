@@ -38,7 +38,7 @@ static String jsonEscapeForApi(const String& value) {
 void handleApiPrices() {
   if (!checkWebAuth()) return;
   String json = "{\"prices\":[";
-  float minCtKwh = 9999, maxCtKwh = 0, totalCtKwh = 0;
+  float minCtKwh = 9999, maxCtKwh = -9999, totalCtKwh = 0;
   int count = 0;
   
   for (int i = 0; i < MATRIX_DISPLAY_HOURS; i++) {
@@ -96,6 +96,27 @@ void handleApiPrices() {
   json += ",\"debugSeries\":\"" + jsonEscapeForApi(String(entsoeLastSeriesSummary)) + "\"";
   json += ",\"debugPointContext\":\"" + jsonEscapeForApi(String(entsoeLastPointContext)) + "\"";
   json += ",\"debugExpected\":\"" + jsonEscapeForApi(String(entsoeLastExpectedCheck)) + "\"";
+  json += ",\"diagnosticSource\":\"" + String(entsoeLastSource) + "\"";
+  json += ",\"diagnosticHttp\":" + String(entsoeLastHttpCode);
+  json += ",\"diagnosticHours\":" + String(entsoeLastDisplayCount);
+  json += ",\"diagnosticFreeHeap\":" + String(entsoeLastFreeHeap);
+  json += ",\"diagnosticMaxBlock\":" + String(entsoeLastMaxFreeBlock);
+  json += ",\"diagnosticFragmentation\":" + String(entsoeLastHeapFragmentation);
+  if (entsoeLastSuccessMillis > 0) {
+    json += ",\"diagnosticAgeSeconds\":" +
+            String((millis() - entsoeLastSuccessMillis) / 1000UL);
+  } else {
+    json += ",\"diagnosticAgeSeconds\":-1";
+  }
+  if (entsoeLastSuccessEpoch > 0) {
+    struct tm successTime;
+    localtime_r(&entsoeLastSuccessEpoch, &successTime);
+    char successBuf[20];
+    strftime(successBuf, sizeof(successBuf), "%H:%M %d/%m", &successTime);
+    json += ",\"diagnosticLastSuccess\":\"" + String(successBuf) + "\"";
+  } else {
+    json += ",\"diagnosticLastSuccess\":\"Never\"";
+  }
   
   // Current time
   struct tm timeinfo;
@@ -218,6 +239,10 @@ void initWebInterface() {
   server.on("/dashboard", []() {
     if (!checkWebAuth()) return;
     server.send(200, "text/html", dashboardHTML);
+  });
+  server.on("/diagnostics", []() {
+    if (!checkWebAuth()) return;
+    server.send(200, "text/html", diagnosticsHTML);
   });
   
   // API endpoints
