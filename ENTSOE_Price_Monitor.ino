@@ -25,38 +25,25 @@ static unsigned long lastHourCheckMs = 0;
 static unsigned long lastPriceRefreshAttemptMs = 0;
 static const unsigned long HOUR_CHECK_INTERVAL_MS = 30000;
 static const unsigned long PRICE_RETRY_INTERVAL_MS = 300000;
+static bool wifiUnavailableLogged = false;
 
-const char INDEX_HTML[] PROGMEM = R"rawliteral(
-<!DOCTYPE html><html><head>
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ENTSO-E Monitor</title>
-<style>
-body{font-family:Arial,sans-serif;background:#1a1a2e;color:#eee;margin:20px;max-width:500px}
-h1{color:#00d4aa}label{display:block;margin:12px 0 4px;color:#aaa}
-input{width:100%;padding:8px;border:1px solid #333;border-radius:4px;background:#16213e;color:#fff;box-sizing:border-box}
-button{background:#00d4aa;color:#111;border:none;padding:12px 24px;border-radius:4px;font-size:16px;margin-top:16px;width:100%;cursor:pointer}
-</style></head><body>
-<h1>ENTSO-E Monitor</h1>
-<form id="cfg">
-<label>WiFi SSID</label><input id="ssid" name="ssid" required>
-<label>WiFi Wachtwoord</label><input type="password" id="pwd" name="password">
-<label>API Key</label><input id="api" name="apiKey">
-<label>Bidding Zone</label><input id="zone" name="biddingZone" value="10YNL----------L">
-<label>Tijdzone</label><input id="tz" name="timezone" value="CET-1CEST,M3.5.0,M10.5.0/3">
-<button type="submit">Opslaan & Herstarten</button>
-</form>
-<script>
-document.getElementById('cfg').onsubmit=async(e)=>{
-e.preventDefault();const d=new FormData(e.target);
-const r=await fetch('/save',{method:'POST',body:new URLSearchParams(d)});
-const text = await r.text();
-if (r.ok) {
-  alert('Opgeslagen!\n' + text);
-  setTimeout(()=>location.reload(),2000);
-} else {
-  alert('Fout: ' + text);
+static bool startRecoveryAccessPoint(bool hasConfig) {
+  if (!hasConfig) {
+    Serial.println("Starting open AP for initial configuration");
+    return WiFi.softAP(apSSID);
+  }
+
+  const size_t webPassLength = strlen(config.webPass);
+  if (webPassLength >= 8 && webPassLength <= 63) {
+    Serial.println("Starting protected recovery AP using the configured web password");
+    return WiFi.softAP(apSSID, config.webPass);
+  }
+
+  char recoveryPassword[9];
+  snprintf(recoveryPassword, sizeof(recoveryPassword), "PM%06X", ESP.getChipId());
+  Serial.printf("Starting protected recovery AP; password: %s\n", recoveryPassword);
+  return WiFi.softAP(apSSID, recoveryPassword);
 }
-</script></body></html>
-)rawliteral";
 
 const char RESET_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -107,6 +94,8 @@ void setup() {
     Serial.print("Trying STA... ");
     WiFi.mode(WIFI_STA);
     WiFi.hostname(portalDomain);
+    WiFi.setAutoConnect(true);
+    WiFi.setAutoReconnect(true);
     WiFi.begin(config.ssid, config.password);
     int w=0;
     const int maxAttempts = 60; // 30 seconds
@@ -117,6 +106,11 @@ void setup() {
     }
     if (WiFi.status() == WL_CONNECTED) {
       connected = true;
+      if (WiFi.setSleepMode(WIFI_MODEM_SLEEP)) {
+        Serial.println("WiFi modem sleep enabled");
+      } else {
+        Serial.println("WiFi modem sleep could not be enabled");
+      }
       Serial.printf("\nConnected! STA IP: %s\n", WiFi.localIP().toString().c_str());
       Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
       Serial.printf("Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
@@ -154,7 +148,9 @@ void setup() {
   } else {
     apMode = true;
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(apSSID);
+    if (!startRecoveryAccessPoint(hasCfg)) {
+      Serial.println("Failed to start configuration AP");
+    }
     Serial.printf("AP: %s on 192.168.4.1\n",apSSID);
     if (!hasCfg) {
       Serial.println("No config - AP only");
@@ -188,17 +184,28 @@ void loop() {
       bool retryAllowed = lastPriceRefreshAttemptMs == 0 ||
                           now - lastPriceRefreshAttemptMs >= PRICE_RETRY_INTERVAL_MS;
       if (refreshRequired && retryAllowed) {
-        Serial.printf("Hour changed from %d to %d, refreshing price window...\n",
-                      lastPriceRefreshHour, currentHour);
-        lastPriceRefreshAttemptMs = now;
-        updateTime(config.timezone);
-        if (getEntsoePrices()) {
-          matrixShowEntsoe();
-          int refreshedHour = getHoursOfDay();
-          lastPriceRefreshHour = refreshedHour >= 0 ? refreshedHour : currentHour;
-          lastPriceRefreshAttemptMs = 0;
+        if (WiFi.status() != WL_CONNECTED) {
+          if (!wifiUnavailableLogged) {
+            Serial.println("Price refresh postponed: WiFi is not connected");
+            wifiUnavailableLogged = true;
+          }
         } else {
-          Serial.println("Price refresh failed; retrying in 5 minutes");
+          if (wifiUnavailableLogged) {
+            Serial.println("WiFi connection restored; resuming price refresh");
+            wifiUnavailableLogged = false;
+          }
+          Serial.printf("Hour changed from %d to %d, refreshing price window...\n",
+                        lastPriceRefreshHour, currentHour);
+          lastPriceRefreshAttemptMs = now;
+          updateTime(config.timezone);
+          if (getEntsoePrices()) {
+            matrixShowEntsoe();
+            int refreshedHour = getHoursOfDay();
+            lastPriceRefreshHour = refreshedHour >= 0 ? refreshedHour : currentHour;
+            lastPriceRefreshAttemptMs = 0;
+          } else {
+            Serial.println("Price refresh failed; retrying in 5 minutes");
+          }
         }
       } else if (currentHour >= 0 && lastPriceRefreshHour < 0) {
         // Keep retrying until the first valid price window has been loaded.
@@ -209,4 +216,5 @@ void loop() {
   if (!apMode) {
     processLatestOtaUpdate();
   }
+  delay(1);
 }

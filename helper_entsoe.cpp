@@ -10,10 +10,6 @@ int entsoeLastPointCount = 0;
 int entsoeLastExtractedCount = 0;
 char entsoeLastPeriodStart[13] = "";
 char entsoeLastPeriodEnd[13] = "";
-char entsoeLastPreview[241] = "";
-char entsoeLastSeriesSummary[321] = "";
-char entsoeLastPointContext[321] = "";
-char entsoeLastExpectedCheck[81] = "";
 char entsoeLastSource[16] = "None";
 time_t entsoeLastSuccessEpoch = 0;
 unsigned long entsoeLastSuccessMillis = 0;
@@ -22,13 +18,28 @@ uint32_t entsoeLastFreeHeap = 0;
 uint16_t entsoeLastMaxFreeBlock = 0;
 uint8_t entsoeLastHeapFragmentation = 0;
 
-String extractBetween(const String& data, const String& startMarker, const String& endMarker, int startPos) {
+static bool extractBetweenInto(const String& data, const String& startMarker,
+                               const String& endMarker, int startPos, String& output) {
   int startIdx = data.indexOf(startMarker, startPos);
-  if (startIdx == -1) return "";
+  if (startIdx == -1) {
+    output = "";
+    return false;
+  }
   startIdx += startMarker.length();
   int endIdx = data.indexOf(endMarker, startIdx);
-  if (endIdx == -1) return "";
-  return data.substring(startIdx, endIdx);
+  if (endIdx == -1) {
+    output = "";
+    return false;
+  }
+  output = "";
+  output.concat(data.c_str() + startIdx, endIdx - startIdx);
+  return true;
+}
+
+String extractBetween(const String& data, const String& startMarker, const String& endMarker, int startPos) {
+  String output;
+  extractBetweenInto(data, startMarker, endMarker, startPos, output);
+  return output;
 }
 
 static bool isXmlTagDelimiter(char value) {
@@ -99,14 +110,50 @@ static String extractLocalTagTextBounded(const String& data, const char* tagName
   return data.substring(contentStart, tagEnd);
 }
 
+static bool extractLocalTagTextBounded(const String& data, const char* tagName, int startPos,
+                                       int maxPos, String& output) {
+  int tagStart = findTagStart(data, tagName, startPos);
+  if (tagStart == -1 || tagStart >= maxPos) {
+    output = "";
+    return false;
+  }
+  int contentStart = findTagContentStart(data, tagStart);
+  if (contentStart == -1 || contentStart > maxPos) {
+    output = "";
+    return false;
+  }
+  int tagEnd = findTagEndStart(data, tagName, contentStart);
+  if (tagEnd == -1 || tagEnd > maxPos) {
+    output = "";
+    return false;
+  }
+
+  output = "";
+  output.concat(data.c_str() + contentStart, tagEnd - contentStart);
+  return true;
+}
+
 static bool parseXmlUtcTime(const String& value, struct tm* out) {
   if (value.length() < 16 || out == nullptr) return false;
+  const char* text = value.c_str();
+  const uint8_t digitOffsets[] = {0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15};
+  for (uint8_t offset : digitOffsets) {
+    if (text[offset] < '0' || text[offset] > '9') return false;
+  }
+
+  const int year = (text[0] - '0') * 1000 + (text[1] - '0') * 100 +
+                   (text[2] - '0') * 10 + (text[3] - '0');
+  const int month = (text[5] - '0') * 10 + (text[6] - '0');
+  const int day = (text[8] - '0') * 10 + (text[9] - '0');
+  const int hour = (text[11] - '0') * 10 + (text[12] - '0');
+  const int minute = (text[14] - '0') * 10 + (text[15] - '0');
+
   memset(out, 0, sizeof(struct tm));
-  out->tm_year = value.substring(0, 4).toInt() - 1900;
-  out->tm_mon = value.substring(5, 7).toInt() - 1;
-  out->tm_mday = value.substring(8, 10).toInt();
-  out->tm_hour = value.substring(11, 13).toInt();
-  out->tm_min = value.substring(14, 16).toInt();
+  out->tm_year = year - 1900;
+  out->tm_mon = month - 1;
+  out->tm_mday = day;
+  out->tm_hour = hour;
+  out->tm_min = minute;
   out->tm_sec = 0;
   return out->tm_year >= 100 && out->tm_mon >= 0 && out->tm_mon <= 11;
 }
@@ -225,9 +272,9 @@ static void readHttpResponseBody(BearSSL::WiFiClientSecure* client, String& resp
       if (readLen > (size_t)(maxResponseBytes - response.length())) {
         readLen = maxResponseBytes - response.length();
       }
-      size_t len = client->readBytes(buffer, readLen);
-      if (len > 0) {
-        response.concat((const char*)buffer, len);
+      int bytesRead = client->read(buffer, readLen);
+      if (bytesRead > 0) {
+        response.concat((const char*)buffer, static_cast<unsigned int>(bytesRead));
         lastDataMs = millis();
       }
       continue;
@@ -267,15 +314,11 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
   Serial.println("Parsing ENTSO-E XML response...");
   entsoeLastPointCount = 0;
   entsoeLastExtractedCount = 0;
-  entsoeLastSeriesSummary[0] = '\0';
-  entsoeLastPointContext[0] = '\0';
-  entsoeLastExpectedCheck[0] = '\0';
   if (resetPrices) {
     resetEntsoePrices();
   }
   int currentHour = getHoursOfDay();
   if (currentHour < 0) currentHour = 0;
-  Serial.printf("Current hour: %d\n", currentHour);
 
   (void)requestPeriodStart;
   
@@ -289,32 +332,17 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
     searchPos = pos + 1;
   }
   entsoeLastPointCount = pointCount;
-  Serial.printf("Found %d price points\n", pointCount);
   if (pointCount == 0) {
     Serial.println("ERROR: No price points found in XML!");
     return;
   }
 
-  int firstPointForContext = findTagStart(xmlResponse, "Point", 0);
-  if (firstPointForContext >= 0) {
-    int contextStart = firstPointForContext > 220 ? firstPointForContext - 220 : 0;
-    xmlResponse.substring(contextStart, firstPointForContext + 100)
-      .toCharArray(entsoeLastPointContext, sizeof(entsoeLastPointContext));
-  }
-  snprintf(entsoeLastExpectedCheck, sizeof(entsoeLastExpectedCheck),
-           "66.56=%d;87.19=%d;107.87=%d;123.19=%d",
-           xmlResponse.indexOf("66.56") >= 0,
-           xmlResponse.indexOf("87.19") >= 0,
-           xmlResponse.indexOf("107.87") >= 0,
-           xmlResponse.indexOf("123.19") >= 0);
-  
   static const int MAX_SERIES = 8;
   static ParsedSeries seriesList[MAX_SERIES];
   memset(seriesList, 0, sizeof(seriesList));
   int seriesCount = 0;
   entsoeLastExtractedCount = 0;
 
-  String seriesSummary = "";
   int seriesPos = 0;
   int seriesIndex = 0;
   while (seriesCount < MAX_SERIES) {
@@ -359,17 +387,12 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
       else if (resolution == "PT30M") current.resolutionSeconds = 1800;
       else current.resolutionSeconds = 3600;
 
-      seriesSummary += "S";
-      seriesSummary += String(seriesIndex);
-      seriesSummary += "(c";
-      seriesSummary += String(current.classification);
-      seriesSummary += ",";
-      seriesSummary += resolution;
-      seriesSummary += ":";
-
       int pointPos = periodContentStart;
       int highestPosition = 0;
-      int sampleCount = 0;
+      String positionStr;
+      String priceStr;
+      positionStr.reserve(4);
+      priceStr.reserve(16);
       const int maxPoints = (int)(sizeof(current.prices) / sizeof(current.prices[0]));
       while (true) {
         int pointStart = findTagStart(xmlResponse, "Point", pointPos);
@@ -377,8 +400,8 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
         int pointEnd = findTagEndStart(xmlResponse, "Point", pointStart);
         if (pointEnd == -1 || pointEnd > periodEnd) break;
 
-        String positionStr = extractLocalTagTextBounded(xmlResponse, "position", pointStart, pointEnd);
-        String priceStr = extractLocalTagTextBounded(xmlResponse, "price.amount", pointStart, pointEnd);
+        extractLocalTagTextBounded(xmlResponse, "position", pointStart, pointEnd, positionStr);
+        extractLocalTagTextBounded(xmlResponse, "price.amount", pointStart, pointEnd, priceStr);
         positionStr.trim();
         priceStr.trim();
         int position = positionStr.toInt();
@@ -388,23 +411,12 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
           current.prices[pointIndex] = (int)(priceFloat * 100);
           current.valid[pointIndex] = true;
           if (position > highestPosition) highestPosition = position;
-          if (sampleCount < 4) {
-            if (sampleCount > 0) seriesSummary += ",";
-            seriesSummary += priceStr;
-            sampleCount++;
-          }
           entsoeLastExtractedCount++;
         }
         pointPos = pointEnd + 1;
       }
 
       current.pointCount = highestPosition;
-
-      seriesSummary += ")=";
-      seriesSummary += String(current.pointCount);
-      seriesSummary += ";";
-      Serial.printf("Series %d: classification=%d resolution=%d points=%d\n",
-                    seriesIndex, current.classification, current.resolutionSeconds, current.pointCount);
 
       seriesIndex++;
       if (current.pointCount > 0) seriesCount++;
@@ -441,15 +453,12 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
       else if (resolution == "PT30M") current.resolutionSeconds = 1800;
       else current.resolutionSeconds = 3600;
 
-      seriesSummary += "P";
-      seriesSummary += String(seriesIndex);
-      seriesSummary += "(";
-      seriesSummary += resolution;
-      seriesSummary += ":";
-
       int pointPos = periodContentStart;
       int highestPosition = 0;
-      int sampleCount = 0;
+      String positionStr;
+      String priceStr;
+      positionStr.reserve(4);
+      priceStr.reserve(16);
       const int maxPoints = (int)(sizeof(current.prices) / sizeof(current.prices[0]));
       while (true) {
         int pointStart = findTagStart(xmlResponse, "Point", pointPos);
@@ -457,8 +466,8 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
         int pointEnd = findTagEndStart(xmlResponse, "Point", pointStart);
         if (pointEnd == -1 || pointEnd > periodEnd) break;
 
-        String positionStr = extractLocalTagTextBounded(xmlResponse, "position", pointStart, pointEnd);
-        String priceStr = extractLocalTagTextBounded(xmlResponse, "price.amount", pointStart, pointEnd);
+        extractLocalTagTextBounded(xmlResponse, "position", pointStart, pointEnd, positionStr);
+        extractLocalTagTextBounded(xmlResponse, "price.amount", pointStart, pointEnd, priceStr);
         positionStr.trim();
         priceStr.trim();
         int position = positionStr.toInt();
@@ -467,21 +476,12 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
           current.prices[pointIndex] = (int)(priceStr.toFloat() * 100);
           current.valid[pointIndex] = true;
           if (position > highestPosition) highestPosition = position;
-          if (sampleCount < 4) {
-            if (sampleCount > 0) seriesSummary += ",";
-            seriesSummary += priceStr;
-            sampleCount++;
-          }
           entsoeLastExtractedCount++;
         }
         pointPos = pointEnd + 1;
       }
 
       current.pointCount = highestPosition;
-      seriesSummary += ")=";
-      seriesSummary += String(current.pointCount);
-      seriesSummary += ";";
-
       seriesIndex++;
       if (current.pointCount > 0) seriesCount++;
       periodPos = periodEnd + 1;
@@ -510,13 +510,12 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
       else if (resolution == "PT30M") current.resolutionSeconds = 1800;
       else current.resolutionSeconds = 3600;
 
-      seriesSummary += "G(";
-      seriesSummary += resolution;
-      seriesSummary += ":";
-
       int pointPos = 0;
       int highestPosition = 0;
-      int sampleCount = 0;
+      String positionStr;
+      String priceStr;
+      positionStr.reserve(4);
+      priceStr.reserve(16);
       const int maxPoints = (int)(sizeof(current.prices) / sizeof(current.prices[0]));
       while (true) {
         int pointStart = findTagStart(xmlResponse, "Point", pointPos);
@@ -524,8 +523,8 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
         int pointEnd = findTagEndStart(xmlResponse, "Point", pointStart);
         if (pointEnd == -1) break;
 
-        String positionStr = extractLocalTagTextBounded(xmlResponse, "position", pointStart, pointEnd);
-        String priceStr = extractLocalTagTextBounded(xmlResponse, "price.amount", pointStart, pointEnd);
+        extractLocalTagTextBounded(xmlResponse, "position", pointStart, pointEnd, positionStr);
+        extractLocalTagTextBounded(xmlResponse, "price.amount", pointStart, pointEnd, priceStr);
         positionStr.trim();
         priceStr.trim();
         int position = positionStr.toInt();
@@ -534,25 +533,15 @@ void parseEntsoeXml(const String& xmlResponse, const String& requestPeriodStart,
           current.prices[pointIndex] = (int)(priceStr.toFloat() * 100);
           current.valid[pointIndex] = true;
           if (position > highestPosition) highestPosition = position;
-          if (sampleCount < 4) {
-            if (sampleCount > 0) seriesSummary += ",";
-            seriesSummary += priceStr;
-            sampleCount++;
-          }
           entsoeLastExtractedCount++;
         }
         pointPos = pointEnd + 1;
       }
 
       current.pointCount = highestPosition;
-      seriesSummary += ")=";
-      seriesSummary += String(current.pointCount);
-      seriesSummary += ";";
       if (current.pointCount > 0) seriesCount = 1;
     }
   }
-  seriesSummary.toCharArray(entsoeLastSeriesSummary, sizeof(entsoeLastSeriesSummary));
-  
   if (seriesCount == 0 || entsoeLastExtractedCount == 0) {
     Serial.println("ERROR: Could not extract any prices!");
     return;
@@ -656,6 +645,7 @@ static bool fetchEntsoeWindow(const String& periodStart, const String& periodEnd
 
     HTTPClient https;
     https.useHTTP10(true);
+    https.setTimeout(15000);
 
     String url = String(apiUrls[apiIndex]) +
                  "?securityToken=" + getApiKey() +
@@ -677,19 +667,12 @@ static bool fetchEntsoeWindow(const String& periodStart, const String& periodEnd
       Serial.printf("HTTP Response code: %d\n", httpCode);
 
       if (httpCode == HTTP_CODE_OK) {
-        int totalSize = https.getSize();
-        Serial.printf("Total response size: %d bytes\n", totalSize);
         String response;
         response.reserve(12000);
         readHttpResponseBody(client.get(), response);
 
-        Serial.printf("Response length: %d bytes\n", response.length());
         entsoeLastResponseLength = response.length();
-        response.substring(0, 240).toCharArray(entsoeLastPreview, sizeof(entsoeLastPreview));
-
         if (response.length() > 0) {
-          Serial.print("Response preview: ");
-          Serial.println(response.substring(0, 200));
           parseEntsoeXml(response, periodStart, false);
           fetched = entsoeLastExtractedCount >= 32;
           if (!fetched) {
@@ -747,7 +730,6 @@ static bool appendSpotDayToPrices(const String& datePath, bool resetPrices) {
   http.end();
 
   entsoeLastResponseLength = response.length();
-  response.substring(0, 240).toCharArray(entsoeLastPreview, sizeof(entsoeLastPreview));
   if (response.length() == 0) return false;
 
   time_t targetUtc[ENTSOE_PRICE_HOURS];
@@ -761,14 +743,18 @@ static bool appendSpotDayToPrices(const String& datePath, bool resetPrices) {
 
   int pos = 0;
   int records = 0;
+  String timestamp;
+  String value;
+  timestamp.reserve(32);
+  value.reserve(16);
   while (true) {
     int timestampMarker = response.indexOf("\"timestamp\": \"", pos);
     if (timestampMarker == -1) break;
-    String timestamp = extractBetween(response, "\"timestamp\": \"", "\"", timestampMarker);
+    if (!extractBetweenInto(response, "\"timestamp\": \"", "\"", timestampMarker, timestamp)) break;
 
     int valueMarker = response.indexOf("\"value\": \"", timestampMarker);
     if (valueMarker == -1) break;
-    String value = extractBetween(response, "\"value\": \"", "\"", valueMarker);
+    if (!extractBetweenInto(response, "\"value\": \"", "\"", valueMarker, value)) break;
     pos = valueMarker + 10;
 
     struct tm utcTm;
@@ -805,16 +791,15 @@ static bool appendSpotDayToPrices(const String& datePath, bool resetPrices) {
 
   entsoeLastPointCount = records;
   entsoeLastExtractedCount = extracted;
-  snprintf(entsoeLastSeriesSummary, sizeof(entsoeLastSeriesSummary),
-           "SpotHTTP(%s):records=%d;hours=%d", datePath.c_str(), records, extracted);
-
   calculateLevels();
   return extracted > 0;
 }
 
 static bool fetchSpotRollingPrices() {
   bool fetched = appendSpotDayToPrices(getLocalDatePath(0), true);
-  appendSpotDayToPrices(getLocalDatePath(1), !fetched);
+  if (countDisplayPrices() < MATRIX_DISPLAY_HOURS) {
+    appendSpotDayToPrices(getLocalDatePath(1), !fetched);
+  }
   printPrices();
   return countDisplayPrices() == MATRIX_DISPLAY_HOURS;
 }
@@ -826,13 +811,29 @@ bool getEntsoePrices() {
   logMemorySnapshot("Before price update", memoryBefore);
   Serial.println("\n--- Fetching ENTSO-E Prices ---");
 
-  fetchEntsoeWindow(getLocalHourUtcString(-2), getLocalHourUtcString(10), true);
   bool usedFallback = false;
+  bool triedFallback = false;
+
+  if (strcmp(entsoeLastSource, "Spot fallback") == 0 &&
+      strcmp(getBiddingZone(), default_biddingZone) == 0) {
+    Serial.println("Reusing the last successful NL Spot fallback source");
+    usedFallback = true;
+    triedFallback = true;
+    fetchSpotRollingPrices();
+  } else {
+    fetchEntsoeWindow(getLocalHourUtcString(-2), getLocalHourUtcString(10), true);
+  }
+
   if (countDisplayPrices() < MATRIX_DISPLAY_HOURS) {
-    if (strcmp(getBiddingZone(), default_biddingZone) == 0) {
+    if (strcmp(getBiddingZone(), default_biddingZone) == 0 && !triedFallback) {
       Serial.println("ENTSO-E XML did not fill rolling display window, using NL Spot fallback");
       usedFallback = true;
+      triedFallback = true;
       fetchSpotRollingPrices();
+    } else if (triedFallback) {
+      Serial.println("NL Spot fallback failed, retrying with ENTSO-E XML");
+      usedFallback = false;
+      fetchEntsoeWindow(getLocalHourUtcString(-2), getLocalHourUtcString(10), true);
     } else {
       Serial.println("No fallback available for the configured bidding zone");
     }

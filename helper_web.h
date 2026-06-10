@@ -323,6 +323,35 @@ const char diagnosticsHTML[] PROGMEM = R"rawliteral(
       return Math.floor(seconds / 3600) + ' h ' + Math.floor((seconds % 3600) / 60) + ' min';
     }
 
+    function formatHttpStatus(code) {
+      const descriptions = {
+        '-11': 'Leestime-out',
+        '-10': 'Schrijven naar stream mislukt',
+        '-9': 'Ongeldige encoding',
+        '-8': 'Onvoldoende geheugen',
+        '-7': 'Geen HTTP-server',
+        '-6': 'Geen datastream',
+        '-5': 'Verbinding verbroken',
+        '-4': 'Niet verbonden',
+        '-3': 'Verzenden van data mislukt',
+        '-2': 'Verzenden van headers mislukt',
+        '-1': 'Verbinding geweigerd',
+        '0': 'Nog geen aanvraag uitgevoerd',
+        '200': 'OK',
+        '400': 'Ongeldige aanvraag',
+        '401': 'Niet geautoriseerd',
+        '403': 'Toegang geweigerd',
+        '404': 'Niet gevonden',
+        '429': 'Te veel aanvragen',
+        '500': 'Serverfout',
+        '502': 'Ongeldige gateway',
+        '503': 'Service niet beschikbaar',
+        '504': 'Gateway-time-out'
+      };
+      const description = descriptions[String(code)];
+      return description ? code + ' - ' + description : String(code);
+    }
+
     async function loadDiagnostics() {
       const status = document.getElementById('status');
       try {
@@ -332,7 +361,7 @@ const char diagnosticsHTML[] PROGMEM = R"rawliteral(
         document.getElementById('source').textContent = data.diagnosticSource || '--';
         document.getElementById('success').textContent = data.diagnosticLastSuccess || '--';
         document.getElementById('age').textContent = formatAge(data.diagnosticAgeSeconds);
-        document.getElementById('http').textContent = data.diagnosticHttp;
+        document.getElementById('http').textContent = formatHttpStatus(data.diagnosticHttp);
         document.getElementById('hours').textContent = data.diagnosticHours;
         document.getElementById('heap').textContent = data.diagnosticFreeHeap + ' B';
         document.getElementById('block').textContent = data.diagnosticMaxBlock + ' B';

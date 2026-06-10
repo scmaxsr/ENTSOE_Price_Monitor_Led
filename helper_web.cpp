@@ -38,6 +38,7 @@ static String jsonEscapeForApi(const String& value) {
 void handleApiPrices() {
   if (!checkWebAuth()) return;
   String json = "{\"prices\":[";
+  json.reserve(2048);
   float minCtKwh = 9999, maxCtKwh = -9999, totalCtKwh = 0;
   int count = 0;
   
@@ -92,10 +93,6 @@ void handleApiPrices() {
   json += ",\"debugExtracted\":" + String(entsoeLastExtractedCount);
   json += ",\"debugPeriodStart\":\"" + String(entsoeLastPeriodStart) + "\"";
   json += ",\"debugPeriodEnd\":\"" + String(entsoeLastPeriodEnd) + "\"";
-  json += ",\"debugPreview\":\"" + jsonEscapeForApi(String(entsoeLastPreview)) + "\"";
-  json += ",\"debugSeries\":\"" + jsonEscapeForApi(String(entsoeLastSeriesSummary)) + "\"";
-  json += ",\"debugPointContext\":\"" + jsonEscapeForApi(String(entsoeLastPointContext)) + "\"";
-  json += ",\"debugExpected\":\"" + jsonEscapeForApi(String(entsoeLastExpectedCheck)) + "\"";
   json += ",\"diagnosticSource\":\"" + String(entsoeLastSource) + "\"";
   json += ",\"diagnosticHttp\":" + String(entsoeLastHttpCode);
   json += ",\"diagnosticHours\":" + String(entsoeLastDisplayCount);
@@ -177,6 +174,10 @@ void handleApiSaveConfig() {
   if (ssid.length() == 0 || (apiKey.length() == 0 && strlen(config.apiKey) == 0) ||
       webUser.length() == 0 || (webPass.length() == 0 && strlen(config.webPass) == 0)) {
     server.send(400, "text/plain", "SSID, API Key, Web Username and Web Password cannot be empty");
+    return;
+  }
+  if (webPass.length() > 0 && webPass.length() < 8) {
+    server.send(400, "text/plain", "New Web Password must contain at least 8 characters");
     return;
   }
   
@@ -276,5 +277,4 @@ void initWebInterface() {
   Serial.println("  /api/reset   - Factory reset");
   Serial.println("  /api/ota/latest - Install latest GitHub release");
   Serial.println("  /scan        - WiFi network scan");
-  startWiFiScan();
 }

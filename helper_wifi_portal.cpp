@@ -72,6 +72,7 @@ void handleScan() {
   json += "]";
   
   server.send(200, "application/json", json);
+  WiFi.scanDelete();
   Serial.printf("Found %d networks, returned %d\n", n, n);
 }
 
@@ -97,6 +98,10 @@ void handleSave() {
 
   if (ssid.length() == 0 || apiKey.length() == 0 || webUser.length() == 0 || webPass.length() == 0) {
     server.send(400, "text/plain", "SSID, API Key, Web Username and Web Password cannot be empty");
+    return;
+  }
+  if (webPass.length() < 8) {
+    server.send(400, "text/plain", "Web Password must contain at least 8 characters");
     return;
   }
 

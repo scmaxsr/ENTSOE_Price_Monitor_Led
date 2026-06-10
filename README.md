@@ -44,6 +44,8 @@ lib_deps =
 - Settings page at `/settings`
 - OTA update page at `/update`
 - Factory reset endpoint and page
+- Runtime heap diagnostics and stable hourly refresh behavior
+- ESP8266 modem sleep during normal station operation
 
 ## Price Handling
 
@@ -89,7 +91,7 @@ Compiled ESP8266 OTA firmware images are versioned with Git tags.
 Current firmware tag:
 
 ```text
-v1.3.3
+v1.5.0
 ```
 
 Download the tagged source or open the tag in GitHub to use the firmware image from that version. Upload the `.bin` file on the device OTA update page:

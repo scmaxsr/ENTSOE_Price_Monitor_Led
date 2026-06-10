@@ -30,6 +30,7 @@ void initTime(const String& timezone){
   Serial.println("  Waiting for NTP time...");
   if(!waitForLocalTime(timeinfo, 15)){
     Serial.println("  Failed to obtain time");
+    setTimezone(timezone);
     return;
   }
   Serial.println("  Got the time from NTP");
@@ -43,8 +44,9 @@ void updateTime(const String& timezone){
   configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.apple.com");
   Serial.println("  Refreshing NTP time...");
   if(!waitForLocalTime(timeinfo, 15)){
-      Serial.println("  Failed to obtain time");
-      return;
+    Serial.println("  Failed to obtain time");
+    setTimezone(timezone);
+    return;
   }
   setTimezone(timezone);
 }
